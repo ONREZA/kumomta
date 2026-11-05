@@ -1,8 +1,8 @@
 use crate::arc::ARC_SEAL_HEADER_NAME;
 use crate::header::TaggedHeaderBuilder;
 use crate::{
-    canonicalization, hash, DKIMError, DkimPrivateKey, HeaderList, ParsedEmail,
-    DKIM_SIGNATURE_HEADER_NAME,
+    DKIM_SIGNATURE_HEADER_NAME, DKIMError, DkimPrivateKey, HeaderList, ParsedEmail,
+    canonicalization, hash,
 };
 use data_encoding::BASE64;
 use ed25519_dalek::Signer as _;
@@ -217,7 +217,7 @@ impl Signer {
                             hash @ hash::HashAlgo::Ed25519Sha256 => {
                                 return Err(DKIMError::UnsupportedHashAlgorithm(format!(
                                     "{hash:?}",
-                                )))
+                                )));
                             }
                         },
                         header_hash.as_ptr(),

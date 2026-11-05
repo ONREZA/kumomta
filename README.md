@@ -1,3 +1,7 @@
+> **ONREZA fork:** This branch supports the embedded library workspace only.
+> See [FORK.md](FORK.md) for its scope, patches, dependency pins, and checks.
+> The upstream daemon and deployment files remain for history and are not supported by this branch.
+
 # KumoMTA
 
 KumoMTA is an open-source Message Transfer Agent (MTA) designed for high-performance outbound email functionality, similar to commercial enterprise MTAs such as Momentum, PowerMTA, and Halon.

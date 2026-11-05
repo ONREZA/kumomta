@@ -1,5 +1,5 @@
 use crate::arc::{ARC_SEAL_HEADER_NAME, MAX_ARC_INSTANCE};
-use crate::{parser, DKIMError, HeaderList};
+use crate::{DKIMError, HeaderList, parser};
 use dns_resolver::{Name, Resolver};
 use indexmap::map::IndexMap;
 use mailparsing::Header;

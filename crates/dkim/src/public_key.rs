@@ -1,4 +1,4 @@
-use crate::{parser, DKIMError, DkimPublicKey, DNS_NAMESPACE};
+use crate::{DKIMError, DNS_NAMESPACE, DkimPublicKey, parser};
 use dns_resolver::Resolver;
 use openssl::pkey::PKey;
 use openssl::rsa::Rsa;

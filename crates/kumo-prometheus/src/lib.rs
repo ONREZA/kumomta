@@ -2,8 +2,8 @@ pub use crate::counter::*;
 use crate::labels::MetricLabel;
 use crate::registry::StreamingCollector;
 use async_stream::stream;
-use futures::stream::BoxStream;
 use futures::StreamExt;
+use futures::stream::BoxStream;
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
 pub use pastey as paste;
 use serde::Serialize;
@@ -377,6 +377,14 @@ macro_rules! __register_metric {
 /// This macro aids in declaring metrics.  Usage looks like:
 ///
 /// ```rust
+/// use kumo_prometheus::{declare_metric, label_key};
+///
+/// label_key! {
+///     pub struct ServiceKey {
+///         pub service: String,
+///     }
+/// }
+///
 /// declare_metric! {
 /// /// The number of active outgoing connections in the system,
 /// /// keyed by the service name.

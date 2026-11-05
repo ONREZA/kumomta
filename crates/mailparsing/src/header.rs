@@ -811,7 +811,10 @@ Some(
 
     #[test]
     fn split_qp_display_name() {
-        let header = Header::with_name_value("From", "=?UTF-8?q?=D8=A7=D9=86=D8=AA=D8=B4=D8=A7=D8=B1=D8=A7=D8=AA_=D8=AC=D9=85?=\r\n\t=?UTF-8?q?=D8=A7=D9=84?= <noreply@email.ahasend.com>");
+        let header = Header::with_name_value(
+            "From",
+            "=?UTF-8?q?=D8=A7=D9=86=D8=AA=D8=B4=D8=A7=D8=B1=D8=A7=D8=AA_=D8=AC=D9=85?=\r\n\t=?UTF-8?q?=D8=A7=D9=84?= <noreply@email.ahasend.com>",
+        );
 
         let mbox = header.as_mailbox_list().unwrap();
 

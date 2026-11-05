@@ -2,7 +2,6 @@
 use crate::client_types::*;
 use crate::parser::{Command, Domain, EsmtpParameter, ForwardPath, ReversePath};
 use crate::{AsyncReadAndWrite, BoxedAsyncReadAndWrite};
-use bstr::ByteSlice;
 use hickory_proto::rr::rdata::TLSA;
 use hickory_proto::rr::Name;
 use memchr::memmem::Finder;
@@ -29,6 +28,8 @@ const MAX_LINE_LEN: usize = 4096;
 
 #[derive(Error, Debug, Clone)]
 pub enum ClientError {
+    #[error("local durable DATA barrier refused")]
+    DataBarrierRefused,
     #[error("response is not UTF8")]
     Utf8(#[from] std::string::FromUtf8Error),
     #[error("Malformed Response: {0}")]
@@ -123,7 +124,8 @@ impl ClientError {
     /// a separate connection
     pub fn was_due_to_message(&self) -> bool {
         match self {
-            Self::Utf8(_)
+            Self::DataBarrierRefused
+            | Self::Utf8(_)
             | Self::MalformedResponseLine(_)
             | Self::ResponseTooLong
             | Self::NotConnected
@@ -471,7 +473,7 @@ impl SmtpClient {
         let mut line = self
             .read_line(deadline.saturating_duration_since(Instant::now()), command)
             .await?;
-        tracing::trace!("recv<-{}: {line}", self.hostname);
+        tracing::trace!("SMTP response line received");
         let mut parsed = parse_response_line(&line)?;
         let mut response_builder = ResponseBuilder::new(&parsed);
 
@@ -488,7 +490,7 @@ impl SmtpClient {
         let response =
             response_builder.build(command.map(|cmd| cmd.encode_for_logging().to_string()));
 
-        tracing::trace!("{}: {response:?}", self.hostname);
+        tracing::trace!(code = response.code, "SMTP response");
 
         Ok(response)
     }
@@ -558,11 +560,7 @@ impl SmtpClient {
             all.extend_from_slice(&line);
             lines.push(line.to_string());
         }
-        tracing::trace!(
-            "send->{}: (PIPELINE) {}",
-            self.hostname,
-            all.as_bstr().escape_bytes()
-        );
+        tracing::trace!(commands = commands.len(), "SMTP pipeline written");
         if self.socket.is_some() {
             if let Some(tracer) = &self.tracer {
                 // Send the lines individually to the tracer, so that we
@@ -589,7 +587,7 @@ impl SmtpClient {
 
     async fn write_command_request(&mut self, command: &Command) -> Result<(), ClientError> {
         let line = command.encode();
-        tracing::trace!("send->{}: {line}", self.hostname);
+        tracing::trace!("SMTP command written");
         if self.socket.is_some() {
             if let Some(tracer) = &self.tracer {
                 WriteTracer::trace(tracer, &line.to_string());
@@ -800,17 +798,20 @@ impl SmtpClient {
             return Err(ClientError::Rejected(resp));
         }
 
-        self.tls_handshake(options).await
+        self.starttls_handshake(options).await
     }
 
-    /// Perform the TLS handshake directly on the current socket, without a
-    /// preceding STARTTLS negotiation. Used for implicit TLS (SMTPS), where
-    /// the session is encrypted from the first byte.
+    /// Perform TLS without sending STARTTLS, as required for implicit TLS.
     pub async fn tls_connect(&mut self, options: TlsOptions) -> Result<TlsStatus, ClientError> {
-        self.tls_handshake(options).await
+        self.starttls_handshake(options).await
     }
 
-    async fn tls_handshake(&mut self, options: TlsOptions) -> Result<TlsStatus, ClientError> {
+    /// Perform TLS only after the caller has received 220 for STARTTLS.
+    /// Separate command and handshake boundaries allow bounded typed diagnostics.
+    pub async fn starttls_handshake(
+        &mut self,
+        options: TlsOptions,
+    ) -> Result<TlsStatus, ClientError> {
         let mut handshake_error = None;
         let mut tls_info = TlsInformation::default();
 
@@ -982,6 +983,59 @@ impl SmtpClient {
         recipient_list: Vec<ForwardPath>,
         data: B,
     ) -> Result<BatchSendSuccess, ClientError> {
+        self.send_mail_multi_recip_with_barrier(sender, recipient_list, data, || async { true })
+            .await
+    }
+
+    /// Invoke the durable journal barrier after DATA 354 and before any payload.
+    /// Refusal closes the connection: an SMTP transaction cannot be reused while
+    /// the receiver is awaiting DATA. No payload or error detail reaches the peer.
+    pub async fn send_mail_multi_recip_with_barrier<B, SENDER, F, Fut>(
+        &mut self,
+        sender: SENDER,
+        recipient_list: Vec<ForwardPath>,
+        data: B,
+        barrier: F,
+    ) -> Result<BatchSendSuccess, ClientError>
+    where
+        B: AsRef<[u8]>,
+        SENDER: Into<ReversePath>,
+        F: FnOnce() -> Fut,
+        Fut: std::future::Future<Output = bool>,
+    {
+        self.send_mail_multi_recip_with_parameters(
+            sender,
+            recipient_list,
+            data,
+            vec![],
+            vec![],
+            barrier,
+        )
+        .await
+    }
+
+    /// Last successful EHLO capability set; refreshed after STARTTLS.
+    pub fn supports_extension(&self, name: &str) -> bool {
+        self.capabilities.contains_key(name)
+    }
+
+    /// Extra already-validated ESMTP parameters for the authenticated submission
+    /// adapter. No parameter is inferred from MIME headers.
+    pub async fn send_mail_multi_recip_with_parameters<B, SENDER, F, Fut>(
+        &mut self,
+        sender: SENDER,
+        recipient_list: Vec<ForwardPath>,
+        data: B,
+        extra_mail: Vec<EsmtpParameter>,
+        extra_rcpt: Vec<EsmtpParameter>,
+        barrier: F,
+    ) -> Result<BatchSendSuccess, ClientError>
+    where
+        B: AsRef<[u8]>,
+        SENDER: Into<ReversePath>,
+        F: FnOnce() -> Fut,
+        Fut: std::future::Future<Output = bool>,
+    {
         let sender = sender.into();
 
         let data: &[u8] = data.as_ref();
@@ -996,10 +1050,14 @@ impl SmtpClient {
         };
 
         let data_is_8bit = data.iter().any(|&b| b >= 0x80);
-        let envelope_is_8bit =
-            !sender.is_ascii() || recipient_list.iter().any(|recipient| !recipient.is_ascii());
+        // RFC 6531 also requires SMTPUTF8 for internationalized message headers,
+        // even when every envelope address is ASCII.
+        let header_end = memchr::memmem::find(data, b"\r\n\r\n").unwrap_or(data.len());
+        let envelope_is_8bit = !data[..header_end].is_ascii()
+            || !sender.is_ascii()
+            || recipient_list.iter().any(|recipient| !recipient.is_ascii());
 
-        let mut mail_from_params = vec![];
+        let mut mail_from_params = extra_mail;
         if data_is_8bit {
             if self.capabilities.contains_key("8BITMIME") {
                 mail_from_params.push(EsmtpParameter {
@@ -1068,7 +1126,7 @@ impl SmtpClient {
         for recipient in &recipient_list {
             commands.push(Command::RcptTo {
                 address: recipient.clone(),
-                parameters: vec![],
+                parameters: extra_rcpt.clone(),
             });
         }
         commands.push(Command::Data);
@@ -1105,7 +1163,11 @@ impl SmtpClient {
             rcpt_responses.push(responses.remove(0)?);
         }
 
-        if is_err && rcpt_responses.iter().all(|resp| resp.code != 250) {
+        if is_err
+            && rcpt_responses
+                .iter()
+                .all(|resp| !matches!(resp.code, 250 | 251))
+        {
             return Err(ClientError::RejectedBatch(rcpt_responses));
         }
 
@@ -1115,32 +1177,24 @@ impl SmtpClient {
         }
 
         if data_resp.code == 354
-            && (mail_resp.code != 250 || rcpt_responses.iter().all(|resp| resp.code != 250))
+            && (mail_resp.code != 250
+                || rcpt_responses
+                    .iter()
+                    .all(|resp| !matches!(resp.code, 250 | 251)))
         {
-            // RFC 2920 3.1:
-            // the client cannot assume that the DATA command will be rejected
-            // just because none of the RCPT TO commands worked.  If the DATA
-            // command was properly rejected the client SMTP can just issue
-            // RSET, but if the DATA command was accepted the client SMTP
-            // should send a single dot.
-
-            // Send dummy data
-            self.write_data_with_timeout(b".\r\n").await?;
-            let data_dot = Command::DataDot;
-            // wait for its response
-            let _ = self
-                .read_response(Some(&data_dot), data_dot.client_timeout(&self.timeouts))
-                .await?;
-
-            // Continue below: we will match one of the failure cases and
-            // return a ClientError::Rejected from one of the earlier
-            // commands
+            // Violet consumes failed connections. Close a peer that requests
+            // DATA without an accepted envelope instead of emitting an empty
+            // message outside the durable DATA barrier.
+            self.socket.take();
         }
 
         if mail_resp.code != 250 {
             return Err(ClientError::Rejected(mail_resp));
         }
-        if rcpt_responses.iter().all(|resp| resp.code != 250) {
+        if rcpt_responses
+            .iter()
+            .all(|resp| !matches!(resp.code, 250 | 251))
+        {
             if rcpt_responses.len() == 1 {
                 return Err(ClientError::Rejected(
                     rcpt_responses.pop().expect("have at least one"),
@@ -1150,6 +1204,11 @@ impl SmtpClient {
         }
         if data_resp.code != 354 {
             return Err(ClientError::Rejected(data_resp));
+        }
+
+        if !barrier().await {
+            self.socket.take();
+            return Err(ClientError::DataBarrierRefused);
         }
 
         let needs_newline = data.last().map(|&b| b != b'\n').unwrap_or(true);
@@ -1266,7 +1325,7 @@ pub fn subject_name(cert: &X509Ref) -> Vec<String> {
     let mut subject_name = vec![];
     for entry in cert.subject_name().entries() {
         if let Ok(obj) = entry.object().nid().short_name() {
-            if let Ok(name) = entry.data().as_utf8() {
+            if let Ok(name) = entry.data().to_string() {
                 subject_name.push(format!("{obj}={name}"));
             }
         }

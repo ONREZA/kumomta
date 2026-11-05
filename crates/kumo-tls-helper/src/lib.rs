@@ -7,8 +7,8 @@ mod traits;
 
 pub use traits::*;
 
-use hickory_proto::rr::rdata::tlsa::{CertUsage, Matching, Selector};
 use hickory_proto::rr::rdata::TLSA;
+use hickory_proto::rr::rdata::tlsa::{CertUsage, Matching, Selector};
 use openssl::pkey::PKey;
 use openssl::ssl::{DaneMatchType, DaneSelector, DaneUsage, SslOptions};
 use openssl::x509::X509;
@@ -18,10 +18,10 @@ use std::io::BufReader;
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::time::{Duration, Instant};
-use tokio_rustls::rustls::client::danger::ServerCertVerifier;
-use tokio_rustls::rustls::crypto::{aws_lc_rs as provider, CryptoProvider};
-use tokio_rustls::rustls::{ClientConfig, SupportedCipherSuite};
 use tokio_rustls::TlsConnector;
+use tokio_rustls::rustls::client::danger::ServerCertVerifier;
+use tokio_rustls::rustls::crypto::{CryptoProvider, aws_lc_rs as provider};
+use tokio_rustls::rustls::{ClientConfig, SupportedCipherSuite};
 
 /// Errors that can occur when building an OpenSSL connector.
 #[derive(Error, Debug, Clone)]
@@ -351,14 +351,14 @@ impl TlsOptions {
 
 mod danger {
     use std::sync::Arc;
+    use tokio_rustls::rustls::DigitallySignedStruct;
     use tokio_rustls::rustls::client::danger::{
         HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier,
     };
     use tokio_rustls::rustls::crypto::{
-        verify_tls12_signature, verify_tls13_signature, CryptoProvider,
+        CryptoProvider, verify_tls12_signature, verify_tls13_signature,
     };
     use tokio_rustls::rustls::pki_types::{CertificateDer, ServerName, UnixTime};
-    use tokio_rustls::rustls::DigitallySignedStruct;
 
     #[derive(Debug)]
     pub struct NoCertificateVerification(Arc<CryptoProvider>);

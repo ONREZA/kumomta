@@ -1,4 +1,4 @@
-use crate::{canonicalization, hash, DKIMError};
+use crate::{DKIMError, canonicalization, hash};
 use nom::bytes::complete::{tag, take_while1};
 use nom::character::complete::alpha1;
 use nom::combinator::opt;

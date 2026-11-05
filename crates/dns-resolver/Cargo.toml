@@ -1,6 +1,7 @@
 [package]
 name = "dns-resolver"
 version = "0.1.0"
+license = "Apache-2.0"
 edition = "2021"
 
 [features]
@@ -18,7 +19,6 @@ anyhow = {workspace=true}
 arc-swap = {workspace=true}
 async-trait = {workspace=true}
 kumo-address = {path="../kumo-address"}
-kumo-log-types = {path="../kumo-log-types"}
 libunbound = {workspace=true, optional=true}
 linkme.workspace = true
 lruttl = {path="../lruttl"}

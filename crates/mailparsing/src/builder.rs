@@ -107,12 +107,12 @@ impl<'a> MessageBuilder<'a> {
                 return Err(MailParsingError::BuildError(
                     "the AMP email spec requires at least one non-amp part \
                         to be present in the message",
-                ))
+                ));
             }
             (None, None, None) => {
                 return Err(MailParsingError::BuildError(
                     "no text or html part was specified",
-                ))
+                ));
             }
         };
 

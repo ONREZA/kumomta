@@ -105,7 +105,9 @@ impl DKIMError {
             | HeaderSerializeError(_) => Status::Tempfail,
             Dns(dns) => match dns {
                 DnsError::InvalidName(_) => Status::Permfail,
-                DnsError::ResolveFailed(_) => Status::Tempfail,
+                DnsError::ResolveFailed(_)
+                | DnsError::ValidationFailed
+                | DnsError::ValidationUnavailable => Status::Tempfail,
             },
         }
     }
