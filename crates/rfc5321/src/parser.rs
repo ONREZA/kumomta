@@ -4,16 +4,16 @@ use bstr::BStr;
 use bstr::{BString, ByteSlice};
 #[cfg(feature = "lua")]
 use mlua::{FromLua, MetaMethod, UserData, UserDataFields, UserDataMethods};
+use nom::Parser;
 use nom::branch::alt;
-use nom::bytes::complete::{take_while1, take_while_m_n};
+use nom::bytes::complete::{take_while_m_n, take_while1};
 use nom::combinator::{all_consuming, map, map_res, opt, recognize};
 use nom::error::context;
 use nom::multi::{many0, many1};
 use nom::sequence::pair;
-use nom::Parser;
 use nom_utils::{
-    domain_name, explain_nom, ipv4_address, ipv6_address, make_span, tag, tag_no_case,
-    utf8_non_ascii, DomainString, IResult, Span,
+    DomainString, IResult, Span, domain_name, explain_nom, ipv4_address, ipv6_address, make_span,
+    tag, tag_no_case, utf8_non_ascii,
 };
 use pastey::paste;
 use std::borrow::Cow;
@@ -1974,11 +1974,7 @@ fn parse_rcpt_to(input: Span) -> IResult<Span, MaybePartialCommand> {
 
 /// Return the lowercase hex digit character for a nibble value (0–15).
 fn hex_nibble_lower(n: u8) -> u8 {
-    if n < 10 {
-        b'0' + n
-    } else {
-        b'a' + n - 10
-    }
+    if n < 10 { b'0' + n } else { b'a' + n - 10 }
 }
 
 /// Xtext-encode a byte slice (RFC 3461 §4).

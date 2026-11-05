@@ -75,11 +75,7 @@ impl<'haystack> Iterator for IterLines<'haystack> {
             None => {
                 self.done = true;
                 let line = &self.haystack[self.start..];
-                if line.is_empty() {
-                    None
-                } else {
-                    Some(line)
-                }
+                if line.is_empty() { None } else { Some(line) }
             }
         }
     }

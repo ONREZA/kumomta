@@ -1,5 +1,5 @@
 use chrono::TimeZone;
-use criterion::{criterion_group, criterion_main, Criterion, SamplingMode, Throughput};
+use criterion::{Criterion, SamplingMode, Throughput, criterion_group, criterion_main};
 use kumo_dkim::canonicalization::Type;
 use kumo_dkim::{DkimPrivateKey, ParsedEmail, SignerBuilder};
 

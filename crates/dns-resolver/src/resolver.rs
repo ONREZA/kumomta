@@ -1,15 +1,15 @@
 use async_trait::async_trait;
+use hickory_resolver::TokioResolver;
 use hickory_resolver::net::{DnsError as NetDnsError, NetError};
 use hickory_resolver::proto::dnssec::Proof;
 use hickory_resolver::proto::op::ResponseCode;
-use hickory_resolver::proto::rr::rdata::{A, AAAA, PTR, TXT};
 #[cfg(feature = "unbound")]
 use hickory_resolver::proto::rr::DNSClass;
+use hickory_resolver::proto::rr::rdata::{A, AAAA, PTR, TXT};
 use hickory_resolver::proto::rr::{
     LowerName, Name, RData, RecordData, RecordSet, RecordType, RrKey,
 };
 use hickory_resolver::proto::serialize::txt::Parser;
-use hickory_resolver::TokioResolver;
 #[cfg(feature = "unbound")]
 use libunbound::{AsyncContext, Context};
 use std::collections::{BTreeMap, BTreeSet};
@@ -125,11 +125,22 @@ pub enum DnsError {
     InvalidName(String),
     #[error("DNS: {0}")]
     ResolveFailed(String),
+    #[error("DNSSEC proof is invalid")]
+    ValidationFailed,
+    #[error("DNSSEC proof is unavailable")]
+    ValidationUnavailable,
 }
 
 impl DnsError {
     pub(crate) fn from_resolve(name: &impl fmt::Display, err: NetError) -> Self {
-        DnsError::ResolveFailed(format!("failed to query DNS for {name}: {err}"))
+        match &err {
+            NetError::Dns(NetDnsError::DnssecBogus) => Self::ValidationFailed,
+            NetError::Dns(NetDnsError::Nsec {
+                proof: Proof::Bogus,
+                ..
+            }) => Self::ValidationFailed,
+            _ => Self::ResolveFailed(format!("failed to query DNS for {name}: {err}")),
+        }
     }
 }
 
@@ -140,23 +151,28 @@ fn no_records(err: &NetError) -> Option<&hickory_resolver::net::NoRecords> {
     }
 }
 
-/// Summarize the DNSSEC status of a set of records from their validation
-/// proofs, returning `(secure, bogus)`. An answer is secure only when it
-/// carries at least one record and every record validated as secure; it is
-/// bogus when any record failed validation. With validation disabled every
-/// record is Indeterminate, so the result is simply not secure. This applies
-/// both to a positive answer (its answer section) and to a securely denied
-/// answer (the authority section that proves the absence).
-fn dnssec_status(proofs: impl Iterator<Item = Proof>) -> (bool, bool) {
+/// Reject failed DNSSEC proofs before exposing records or a negative answer.
+/// Hickory can return a successful lookup containing Bogus proofs. Mapping
+/// that to `secure=false` would let callers downgrade to ordinary DNS or use
+/// implicit MX fallback. Unsigned and validation-disabled answers remain
+/// usable; only a nonempty set of entirely Secure proofs is authenticated.
+fn dnssec_status(validating: bool, proofs: impl Iterator<Item = Proof>) -> Result<bool, DnsError> {
     let mut any = false;
     let mut all_secure = true;
-    let mut bogus = false;
     for proof in proofs {
+        if proof == Proof::Bogus {
+            return Err(DnsError::ValidationFailed);
+        }
+        if validating && proof == Proof::Indeterminate {
+            return Err(DnsError::ValidationUnavailable);
+        }
         any = true;
         all_secure &= proof == Proof::Secure;
-        bogus |= proof == Proof::Bogus;
     }
-    (any && all_secure, bogus)
+    if validating && !any {
+        return Err(DnsError::ValidationUnavailable);
+    }
+    Ok(any && all_secure)
 }
 
 #[async_trait]
@@ -512,7 +528,7 @@ impl Resolver for UnboundResolver {
             (Err(err), Err(_)) => {
                 return Err(DnsError::ResolveFailed(format!(
                     "failed to query DNS for {host}: {err}"
-                )))
+                )));
             }
         }
 
@@ -612,9 +628,25 @@ impl Resolver for HickoryResolver {
             .map_err(|err| DnsError::InvalidName(format!("invalid name {host}: {err}")))?;
 
         match self.inner.lookup_ip(name.clone()).await {
-            Ok(result) => Ok(result.iter().collect()),
+            Ok(result) => {
+                dnssec_status(
+                    self.inner.options().validate,
+                    result.as_lookup().answers().iter().map(|r| r.proof),
+                )?;
+                Ok(result.iter().collect())
+            }
             Err(err) => match no_records(&err) {
-                Some(_) => Ok(vec![]),
+                Some(nr) => {
+                    dnssec_status(
+                        self.inner.options().validate,
+                        nr.authorities
+                            .as_deref()
+                            .unwrap_or(&[])
+                            .iter()
+                            .map(|r| r.proof),
+                    )?;
+                    Ok(vec![])
+                }
                 None => Err(DnsError::from_resolve(&name, err)),
             },
         }
@@ -625,16 +657,32 @@ impl Resolver for HickoryResolver {
             .map_err(|err| DnsError::InvalidName(format!("invalid name {host}: {err}")))?;
 
         match self.inner.mx_lookup(name.clone()).await {
-            Ok(result) => Ok(result
-                .answers()
-                .iter()
-                .filter_map(|r| match &r.data {
-                    RData::MX(mx) => Some(mx.exchange.clone()),
-                    _ => None,
-                })
-                .collect()),
+            Ok(result) => {
+                dnssec_status(
+                    self.inner.options().validate,
+                    result.answers().iter().map(|r| r.proof),
+                )?;
+                Ok(result
+                    .answers()
+                    .iter()
+                    .filter_map(|r| match &r.data {
+                        RData::MX(mx) => Some(mx.exchange.clone()),
+                        _ => None,
+                    })
+                    .collect())
+            }
             Err(err) => match no_records(&err) {
-                Some(_) => Ok(vec![]),
+                Some(nr) => {
+                    dnssec_status(
+                        self.inner.options().validate,
+                        nr.authorities
+                            .as_deref()
+                            .unwrap_or(&[])
+                            .iter()
+                            .map(|r| r.proof),
+                    )?;
+                    Ok(vec![])
+                }
                 None => Err(DnsError::from_resolve(&name, err)),
             },
         }
@@ -642,16 +690,32 @@ impl Resolver for HickoryResolver {
 
     async fn resolve_ptr(&self, ip: IpAddr) -> Result<Vec<Name>, DnsError> {
         match self.inner.reverse_lookup(ip).await {
-            Ok(result) => Ok(result
-                .answers()
-                .iter()
-                .filter_map(|r| match &r.data {
-                    RData::PTR(ptr) => Some(ptr.0.clone()),
-                    _ => None,
-                })
-                .collect()),
+            Ok(result) => {
+                dnssec_status(
+                    self.inner.options().validate,
+                    result.answers().iter().map(|r| r.proof),
+                )?;
+                Ok(result
+                    .answers()
+                    .iter()
+                    .filter_map(|r| match &r.data {
+                        RData::PTR(ptr) => Some(ptr.0.clone()),
+                        _ => None,
+                    })
+                    .collect())
+            }
             Err(err) => match no_records(&err) {
-                Some(_) => Ok(vec![]),
+                Some(nr) => {
+                    dnssec_status(
+                        self.inner.options().validate,
+                        nr.authorities
+                            .as_deref()
+                            .unwrap_or(&[])
+                            .iter()
+                            .map(|r| r.proof),
+                    )?;
+                    Ok(vec![])
+                }
                 None => Err(DnsError::from_resolve(&ip, err)),
             },
         }
@@ -662,16 +726,28 @@ impl Resolver for HickoryResolver {
             Ok(result) => {
                 let expires = result.valid_until();
                 let answers = result.answers();
-                // Surface bogus so that callers (e.g. DANE) can defer rather
-                // than downgrade.
-                let (secure, bogus) = dnssec_status(answers.iter().map(|r| r.proof));
-                let records = answers.iter().map(|r| r.data.clone()).collect();
+                // Reject failed proofs before MX/address consumers can cache or
+                // route using these records as merely insecure DNS.
+                let secure = dnssec_status(
+                    self.inner.options().validate,
+                    answers.iter().map(|r| r.proof),
+                )?;
+                // Hickory can cache preserved aliases together with the target
+                // RRset. A later query for the target may still contain the
+                // earlier owner's CNAME. Expose only aliases owned by this
+                // question so callers do not mistake cache history for a new
+                // redirect. Validate every proof before filtering records.
+                let records = answers
+                    .iter()
+                    .filter(|r| r.record_type() != RecordType::CNAME || r.name == name)
+                    .map(|r| r.data.clone())
+                    .collect();
                 Ok(Answer {
                     canon_name: None,
                     records,
                     nxdomain: false,
                     secure,
-                    bogus,
+                    bogus: false,
                     why_bogus: None,
                     expires,
                     response_code: ResponseCode::NoError,
@@ -681,18 +757,21 @@ impl Resolver for HickoryResolver {
                 Some(no_records) => {
                     // A securely denied answer (NODATA/NXDOMAIN in a signed
                     // zone) is proven by DNSSEC-validated authority records
-                    // (SOA/NSEC/RRSIG); derive its secure/bogus status from
+                    // (SOA/NSEC/RRSIG); derive its validation status from
                     // those just as we do for a positive answer, so that a
                     // securely proven "no MX" can still engage DANE for the
                     // implicit MX.
                     let authorities = no_records.authorities.as_deref().unwrap_or(&[]);
-                    let (secure, bogus) = dnssec_status(authorities.iter().map(|r| r.proof));
+                    let secure = dnssec_status(
+                        self.inner.options().validate,
+                        authorities.iter().map(|r| r.proof),
+                    )?;
                     Ok(Answer {
                         canon_name: None,
                         records: vec![],
                         nxdomain: no_records.response_code == ResponseCode::NXDomain,
                         secure,
-                        bogus,
+                        bogus: false,
                         why_bogus: None,
                         response_code: no_records.response_code,
                         expires: Instant::now()

@@ -1,7 +1,6 @@
 use crate::metrics::*;
 use dashmap::DashMap;
 use kumo_prometheus::prometheus::{IntCounter, IntGauge};
-use kumo_server_memory::subscribe_to_memory_status_changes_async;
 pub use linkme;
 use parking_lot::Mutex;
 pub use pastey as paste;
@@ -14,7 +13,7 @@ use std::hash::Hash;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, LazyLock, Weak};
 use tokio::sync::Semaphore;
-use tokio::time::{timeout_at, Duration, Instant};
+use tokio::time::{Duration, Instant, timeout_at};
 
 mod metrics;
 
@@ -42,10 +41,8 @@ struct Inner<K: Clone + Hash + Eq + Debug, V: Clone + Send + Sync + Debug> {
     size_gauge: IntGauge,
 }
 
-impl<
-        K: Clone + Debug + Send + Sync + Hash + Eq + 'static,
-        V: Clone + Debug + Send + Sync + 'static,
-    > Inner<K, V>
+impl<K: Clone + Debug + Send + Sync + Hash + Eq + 'static, V: Clone + Debug + Send + Sync + 'static>
+    Inner<K, V>
 {
     pub fn clear(&self) -> usize {
         let num_entries = self.cache.len();
@@ -252,10 +249,8 @@ trait CachePurger {
     fn update_capacity(&self, capacity: usize);
 }
 
-impl<
-        K: Clone + Debug + Send + Sync + Hash + Eq + 'static,
-        V: Clone + Debug + Send + Sync + 'static,
-    > CachePurger for Inner<K, V>
+impl<K: Clone + Debug + Send + Sync + Hash + Eq + 'static, V: Clone + Debug + Send + Sync + 'static>
+    CachePurger for Inner<K, V>
 {
     fn name(&self) -> &str {
         &self.name
@@ -456,23 +451,7 @@ pub fn set_cache_capacity(name: &str, capacity: usize) -> bool {
 
 pub fn spawn_memory_monitor() {
     vivify();
-    tokio::spawn(purge_caches_on_memory_shortage());
     tokio::spawn(prune_expired_caches());
-}
-
-async fn purge_caches_on_memory_shortage() {
-    tracing::debug!("starting memory monitor");
-    let mut memory_status = subscribe_to_memory_status_changes_async().await;
-    while let Ok(()) = memory_status.changed().await {
-        if kumo_server_memory::get_headroom() == 0 {
-            purge_all_caches();
-
-            // Wait a little bit so that we can debounce
-            // in the case where we're riding the cusp of
-            // the limit and would thrash the caches
-            tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -527,9 +506,9 @@ pub struct LruCacheWithTtl<K: Clone + Debug + Hash + Eq, V: Clone + Debug + Send
 }
 
 impl<
-        K: Clone + Debug + Hash + Eq + Send + Sync + std::fmt::Debug + 'static,
-        V: Clone + Debug + Send + Sync + 'static,
-    > LruCacheWithTtl<K, V>
+    K: Clone + Debug + Hash + Eq + Send + Sync + std::fmt::Debug + 'static,
+    V: Clone + Debug + Send + Sync + 'static,
+> LruCacheWithTtl<K, V>
 {
     pub fn new<S: Into<String>>(name: S, capacity: usize) -> Self {
         let name = name.into();

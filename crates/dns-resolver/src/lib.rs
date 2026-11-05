@@ -1,13 +1,14 @@
 use arc_swap::ArcSwap;
-use hickory_resolver::proto::op::ResponseCode;
-pub use hickory_resolver::proto::rr::rdata::tlsa::{CertUsage, Matching, Selector, TLSA};
-pub use hickory_resolver::proto::rr::Name;
-use hickory_resolver::proto::rr::{RData, RecordType};
 use hickory_resolver::proto::ProtoError;
+use hickory_resolver::proto::op::ResponseCode;
+pub use hickory_resolver::proto::rr::Name;
+pub use hickory_resolver::proto::rr::rdata::tlsa::{CertUsage, Matching, Selector, TLSA};
+use hickory_resolver::proto::rr::{RData, RecordType};
 use kumo_address::host::HostAddress;
 use kumo_address::host_or_socket::HostOrSocketAddress;
 use kumo_address::resolvable::ResolvableSocketAddr;
-use kumo_log_types::ResolvedAddress;
+mod address;
+pub use address::ResolvedAddress;
 use lruttl::declare_cache;
 use serde::{Deserialize, Serialize};
 use std::net::{IpAddr, Ipv6Addr, SocketAddr};
@@ -18,8 +19,8 @@ mod resolver;
 #[cfg(feature = "unbound")]
 pub use resolver::UnboundResolver;
 pub use resolver::{
-    ptr_host, reverse_ip, AggregateResolver, Answer, DnsError, HickoryResolver, IpDisplay,
-    Resolver, TestResolver,
+    AggregateResolver, Answer, DnsError, HickoryResolver, IpDisplay, Resolver, TestResolver,
+    ptr_host, reverse_ip,
 };
 
 // An `ArcSwap` can only hold `Sized` types, so we cannot stuff a `dyn Resolver` directly into it.
@@ -126,8 +127,8 @@ fn tlsa_is_usable(tlsa: &TLSA) -> bool {
 ///
 /// The caller is responsible for only invoking this when the chain to the MX
 /// host was securely (DNSSEC) resolved: both the MX RRset (see
-/// [`MailExchanger::is_secure`]) and the MX host's address records (see
-/// [`ResolvedAddress::is_secure`](kumo_log_types::ResolvedAddress)) must be
+/// the MX answer secure status) and the MX host's address records (see
+/// [`ResolvedAddress::is_secure`]) must be
 /// secure. RFC 7672 section 2.2 requires the address records to be secure
 /// before it is safe to rely on TLSA records; we satisfy that by gating on the
 /// secure status of the very address we are about to connect to.
@@ -140,7 +141,11 @@ pub async fn resolve_dane(mx_host: &str, port: u16) -> anyhow::Result<DaneStatus
 /// Maps the result of the TLSA lookup onto a [`DaneStatus`], applying the
 /// RFC 7672 rules. Split out from [`resolve_dane`] so that it can be unit
 /// tested without a live (DNSSEC validating) resolver.
-fn classify_tlsa_answer(mx_host: &str, port: u16, answer: Result<Answer, DnsError>) -> DaneStatus {
+pub fn classify_tlsa_answer(
+    mx_host: &str,
+    port: u16,
+    answer: Result<Answer, DnsError>,
+) -> DaneStatus {
     let answer = match answer {
         Ok(answer) => answer,
         Err(err) => {
@@ -352,7 +357,9 @@ impl DomainClassification {
 
             let literal = match has_colon_port(literal) {
                 Some((_, _)) if opt_port.is_some() => {
-                    anyhow::bail!("invalid address: `{domain_name}` specifies a port both inside and outside a literal address enclosed in square brackets");
+                    anyhow::bail!(
+                        "invalid address: `{domain_name}` specifies a port both inside and outside a literal address enclosed in square brackets"
+                    );
                 }
                 Some((literal, port)) => {
                     opt_port.replace(port);
@@ -554,7 +561,7 @@ pub enum IpLookupStrategy {
 /// A set of resolved IP addresses together with whether the DNS lookup that
 /// produced them was DNSSEC validated (secure). The secure flag is what lets
 /// the delivery path decide DANE eligibility without performing a second
-/// lookup; see [`ResolvedAddress::is_secure`](kumo_log_types::ResolvedAddress).
+/// lookup; see [`ResolvedAddress::is_secure`].
 #[derive(Clone, Debug)]
 pub struct IpAddresses {
     pub addrs: Vec<IpAddr>,
@@ -940,11 +947,11 @@ mod test {
     #[cfg(feature = "live-dns-tests")]
     #[tokio::test]
     async fn hickory_dnssec_validation() {
+        use hickory_resolver::TokioResolver;
         use hickory_resolver::config::{
             ConnectionConfig, NameServerConfig, ProtocolConfig, ResolverConfig,
         };
         use hickory_resolver::net::runtime::TokioRuntimeProvider;
-        use hickory_resolver::TokioResolver;
 
         let mut udp = ConnectionConfig::new(ProtocolConfig::Udp);
         udp.port = 53;
@@ -995,11 +1002,11 @@ mod test {
     #[cfg(feature = "live-dns-tests")]
     #[tokio::test]
     async fn hickory_negative_answer_secure_bit() {
+        use hickory_resolver::TokioResolver;
         use hickory_resolver::config::{
             ConnectionConfig, NameServerConfig, ProtocolConfig, ResolverConfig,
         };
         use hickory_resolver::net::runtime::TokioRuntimeProvider;
-        use hickory_resolver::TokioResolver;
 
         let mut udp = ConnectionConfig::new(ProtocolConfig::Udp);
         udp.port = 53;

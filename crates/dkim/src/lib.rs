@@ -4,8 +4,8 @@ use crate::errors::Status;
 use crate::hash::HeaderList;
 use crate::header::TaggedHeader;
 use dns_resolver::{HickoryResolver, Resolver};
-use ed25519_dalek::pkcs8::DecodePrivateKey;
 use ed25519_dalek::SigningKey;
+use ed25519_dalek::pkcs8::DecodePrivateKey;
 use mailparsing::AuthenticationResult;
 use openssl::md::Md;
 use openssl::pkey::PKey;
@@ -26,9 +26,9 @@ mod roundtrip_test;
 mod sign;
 
 pub use errors::DKIMError;
-use header::{DKIMHeader, DKIM_SIGNATURE_HEADER_NAME};
+use header::{DKIM_SIGNATURE_HEADER_NAME, DKIMHeader};
 pub use parsed_email::ParsedEmail;
-pub use parser::{tag_list as parse_tag_list, Tag};
+pub use parser::{Tag, tag_list as parse_tag_list};
 pub use sign::{Signer, SignerBuilder};
 
 const DNS_NAMESPACE: &str = "_domainkey";
@@ -462,7 +462,10 @@ b=dzdVyOfAKCdLXdJOc9G2q8LoXSlEniSbav+yuU4zGeeruD00lszZ
         let mut now = chrono::Utc::now().naive_utc();
         now -= chrono::Duration::try_seconds(1).expect("1 second to be valid");
 
-        let header = format!("v=1; a=rsa-sha256; d=example.net; s=brisbane; i=foo@example.net; h=From:B; bh=hash; b=hash; x={}", now.and_utc().timestamp());
+        let header = format!(
+            "v=1; a=rsa-sha256; d=example.net; s=brisbane; i=foo@example.net; h=From:B; bh=hash; b=hash; x={}",
+            now.and_utc().timestamp()
+        );
 
         assert!(DKIMHeader::parse(&header).is_ok());
     }
@@ -472,7 +475,10 @@ b=dzdVyOfAKCdLXdJOc9G2q8LoXSlEniSbav+yuU4zGeeruD00lszZ
         let mut now = chrono::Utc::now().naive_utc();
         now -= chrono::Duration::try_hours(3).expect("3 hours to be legit");
 
-        let header = format!("v=1; a=rsa-sha256; d=example.net; s=brisbane; i=foo@example.net; h=From:B; bh=hash; b=hash; x={}", now.and_utc().timestamp());
+        let header = format!(
+            "v=1; a=rsa-sha256; d=example.net; s=brisbane; i=foo@example.net; h=From:B; bh=hash; b=hash; x={}",
+            now.and_utc().timestamp()
+        );
 
         assert_eq!(
             DKIMHeader::parse(&header).unwrap_err(),

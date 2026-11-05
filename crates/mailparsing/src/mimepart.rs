@@ -2,12 +2,12 @@ use crate::header::{HeaderParseResult, MessageConformance};
 use crate::headermap::HeaderMap;
 use crate::strings::IntoSharedString;
 use crate::{
-    has_lone_cr_or_lf, BStringUtf8, Header, MailParsingError, MessageID, MimeParameterEncoding,
-    MimeParameters, Result, SharedString,
+    BStringUtf8, Header, MailParsingError, MessageID, MimeParameterEncoding, MimeParameters,
+    Result, SharedString, has_lone_cr_or_lf,
 };
 use bstr::{BStr, BString, ByteSlice};
-use charset_normalizer_rs::entity::NormalizerSettings;
 use charset_normalizer_rs::Encoding;
+use charset_normalizer_rs::entity::NormalizerSettings;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -882,7 +882,7 @@ impl<'a> MimePart<'a> {
                 DecodedBody::Binary(_) => {
                     return Err(MailParsingError::BodyParse(
                         "expected text/plain part to be text, but it is binary".to_string(),
-                    ))
+                    ));
                 }
             };
         }
@@ -892,7 +892,7 @@ impl<'a> MimePart<'a> {
                 DecodedBody::Binary(_) => {
                     return Err(MailParsingError::BodyParse(
                         "expected text/html part to be text, but it is binary".to_string(),
-                    ))
+                    ));
                 }
             };
         }
@@ -902,7 +902,7 @@ impl<'a> MimePart<'a> {
                 DecodedBody::Binary(_) => {
                     return Err(MailParsingError::BodyParse(
                         "expected text/x-amp-html part to be text, but it is binary".to_string(),
-                    ))
+                    ));
                 }
             };
         }
@@ -1802,9 +1802,10 @@ Ok(
         );
 
         let part = MimePart::parse(message).unwrap();
-        assert!(part
-            .conformance()
-            .contains(MessageConformance::MISSING_COLON_VALUE));
+        assert!(
+            part.conformance()
+                .contains(MessageConformance::MISSING_COLON_VALUE)
+        );
     }
 
     /// This is a regression test for an issue where we'd interpret the
@@ -1998,8 +1999,7 @@ y long line=0A\r
 
     #[test]
     fn check_conformance() {
-        const MULTI_HEADER_CONTENT: &str =
-        "X-Hello: there\r\nX-Header: value\r\nSubject: Hello\r\nX-Header: another value\r\nFrom :Someone@somewhere\r\n\r\nBody";
+        const MULTI_HEADER_CONTENT: &str = "X-Hello: there\r\nX-Header: value\r\nSubject: Hello\r\nX-Header: another value\r\nFrom :Someone@somewhere\r\n\r\nBody";
 
         let msg = MimePart::parse(MULTI_HEADER_CONTENT).unwrap();
         let rebuilt = BString::from(

@@ -18,6 +18,10 @@ pub struct MtaStsPolicy {
 
 impl MtaStsPolicy {
     pub fn parse(data: &str) -> anyhow::Result<Self> {
+        anyhow::ensure!(
+            data.len() <= super::http::MAX_POLICY_BYTES,
+            "MTA-STS policy exceeds 64 KiB"
+        );
         let mut fields: BTreeMap<String, Vec<String>> = BTreeMap::new();
 
         for line in data.lines() {
@@ -26,10 +30,14 @@ impl MtaStsPolicy {
             }
             let (key, value) = line
                 .split_once(':')
-                .ok_or_else(|| anyhow::anyhow!("invalid STS policy {data}"))?;
+                .ok_or_else(|| anyhow::anyhow!("invalid STS policy document"))?;
             let key = key.trim();
             let value = value.trim();
 
+            // RFC 8461: mx is repeated; all other fields use the first value.
+            if key != "mx" && fields.contains_key(key) {
+                continue;
+            }
             fields
                 .entry(key.to_string())
                 .or_default()
@@ -38,25 +46,25 @@ impl MtaStsPolicy {
 
         let version = fields
             .remove("version")
-            .ok_or_else(|| anyhow::anyhow!("STS policy {data} is missing a version"))?;
+            .ok_or_else(|| anyhow::anyhow!("STS policy document is missing a version"))?;
         if version.len() != 1 || version[0] != "STSv1" {
-            anyhow::bail!("STS policy {data} has incompatible STS version");
+            anyhow::bail!("STS policy document has incompatible STS version");
         }
 
         let mode = match fields.remove("mode") {
-            None => anyhow::bail!("STS policy {data} is missing required mode"),
+            None => anyhow::bail!("STS policy document is missing required mode"),
             Some(mode) if mode.len() == 1 => match mode[0].as_str() {
                 "enforce" => PolicyMode::Enforce,
                 "testing" => PolicyMode::Testing,
                 "none" => PolicyMode::None,
-                _ => anyhow::bail!("STS policy {data} has invalid mode"),
+                _ => anyhow::bail!("STS policy document has invalid mode"),
             },
-            _ => anyhow::bail!("STS policy {data} has invalid mode"),
+            _ => anyhow::bail!("STS policy document has invalid mode"),
         };
 
         let mut mx = match fields.remove("mx") {
             None if mode == PolicyMode::None => vec![],
-            None => anyhow::bail!("STS policy {data} is missing required mx"),
+            None => anyhow::bail!("STS policy document is missing required mx"),
             Some(v) => v,
         };
 
@@ -66,12 +74,18 @@ impl MtaStsPolicy {
             .for_each(|entry| *entry = entry.to_lowercase());
 
         let max_age: u64 = match fields.remove("max_age") {
-            None => anyhow::bail!("STS policy {data} is missing required max_age"),
+            None => anyhow::bail!("STS policy document is missing required max_age"),
             Some(v) if v.len() == 1 => {
                 let max_age = &v[0];
-                max_age.parse().map_err(|err| anyhow::anyhow!("STS policy {data} has max_age {max_age} that is not a valid integer: {err:#}"))?
+                anyhow::ensure!(
+                    !max_age.is_empty()
+                        && max_age.len() <= 10
+                        && max_age.bytes().all(|b| b.is_ascii_digit()),
+                    "MTA-STS max_age must be 1 to 10 decimal digits"
+                );
+                max_age.parse().map_err(|err| anyhow::anyhow!("STS policy document has max_age {max_age} that is not a valid integer: {err:#}"))?
             }
-            _ => anyhow::bail!("STS policy {data} has invalid max_age"),
+            _ => anyhow::bail!("STS policy document has invalid max_age"),
         };
 
         Ok(Self {
@@ -156,8 +170,7 @@ pub(crate) mod test {
         }
     }
 
-    const SAMPLE_POLICY: &str =
-        "version: STSv1 \nmode: enforce\nmx: mail.example.com\r\nmx:\t*.example.net\nmx: backupmx.example.com\nmax_age: 604800";
+    const SAMPLE_POLICY: &str = "version: STSv1 \nmode: enforce\nmx: mail.example.com\r\nmx:\t*.example.net\nmx: backupmx.example.com\nmax_age: 604800";
 
     #[tokio::test]
     async fn get_policy() {

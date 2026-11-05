@@ -1,6 +1,7 @@
 [package]
 name = "mta-sts"
 version = "0.1.0"
+license = "Apache-2.0"
 edition = "2021"
 
 [dependencies]
@@ -12,9 +13,9 @@ lruttl = {path="../lruttl"}
 reqwest = {workspace=true, default-features=false, features=["json", "rustls-tls"]}
 serde = {workspace=true}
 hickory-resolver = {workspace=true}
+tokio = {workspace=true}
 
 [dev-dependencies]
-tokio = {workspace=true}
 k9 = {workspace=true}
 
 [lints]

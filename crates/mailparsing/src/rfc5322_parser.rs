@@ -2,18 +2,18 @@ use crate::headermap::EncodeHeaderValue;
 use crate::{MailParsingError, Result, SharedString};
 use bstr::{BStr, BString, ByteSlice, ByteVec};
 use charset_normalizer_rs::Encoding;
+use nom::Parser as _;
 use nom::branch::alt;
-use nom::bytes::complete::{take_while, take_while1, take_while_m_n};
+use nom::bytes::complete::{take_while, take_while_m_n, take_while1};
 use nom::combinator::{all_consuming, map, opt, recognize};
 use nom::error::context;
 use nom::multi::{many0, many1, separated_list1};
 use nom::sequence::{delimited, preceded, separated_pair, terminated};
-use nom::Parser as _;
 use nom_utils::{
-    explain_nom, make_context_error, make_span, tag, utf8_non_ascii, IResult, ParseError, Span,
+    IResult, ParseError, Span, explain_nom, make_context_error, make_span, tag, utf8_non_ascii,
 };
 use serde::{Deserialize, Serialize};
-use serde_with::{serde_as, DeserializeAs, SerializeAs};
+use serde_with::{DeserializeAs, SerializeAs, serde_as};
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 
@@ -2992,9 +2992,10 @@ Err(
         let msg = MimePart::parse(message).unwrap();
         eprintln!("{msg:#?}");
 
-        assert!(msg
-            .conformance()
-            .contains(MessageConformance::INVALID_MIME_HEADERS));
+        assert!(
+            msg.conformance()
+                .contains(MessageConformance::INVALID_MIME_HEADERS)
+        );
         msg.headers().content_disposition().unwrap_err();
 
         // There is no Content-Disposition in the rebuilt message, because
@@ -3015,7 +3016,10 @@ Err(
         k9::assert_equal!(cd.get("filename").unwrap(), "日本語の添付");
 
         let encoded = cd.encode_value();
-        k9::assert_equal!(encoded, "attachment;\r\n\tfilename==?UTF-8?q?=E6=97=A5=E6=9C=AC=E8=AA=9E=E3=81=AE=E6=B7=BB=E4=BB=98?=");
+        k9::assert_equal!(
+            encoded,
+            "attachment;\r\n\tfilename==?UTF-8?q?=E6=97=A5=E6=9C=AC=E8=AA=9E=E3=81=AE=E6=B7=BB=E4=BB=98?="
+        );
     }
 
     #[test]
@@ -3031,7 +3035,10 @@ Err(
         let cd = msg.headers().content_disposition().unwrap().unwrap();
         k9::assert_equal!(cd.get("filename").unwrap(), "日本語の添付");
         let encoded = cd.encode_value();
-        k9::assert_equal!(encoded, "attachment;\r\n\tfilename=\"=?UTF-8?q?=E6=97=A5=E6=9C=AC=E8=AA=9E=E3=81=AE=E6=B7=BB=E4=BB=98?=\"");
+        k9::assert_equal!(
+            encoded,
+            "attachment;\r\n\tfilename=\"=?UTF-8?q?=E6=97=A5=E6=9C=AC=E8=AA=9E=E3=81=AE=E6=B7=BB=E4=BB=98?=\""
+        );
 
         let ct = msg.headers().content_type().unwrap().unwrap();
         k9::assert_equal!(ct.get("name").unwrap(), "日本語の添付");
@@ -3681,7 +3688,7 @@ Ok(
 
         let ar = Header::with_name_value(
             "Authentication-Results",
-            "example.com;\n\tauth=pass (cram-md5) smtp.auth=sender@example.com;\n\tspf=fail smtp.mailfrom=example.com"
+            "example.com;\n\tauth=pass (cram-md5) smtp.auth=sender@example.com;\n\tspf=fail smtp.mailfrom=example.com",
         );
         let ar = ar.as_authentication_results().unwrap();
         k9::snapshot!(

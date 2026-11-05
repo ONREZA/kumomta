@@ -1,13 +1,13 @@
 [package]
 name = "lruttl"
 version = "0.1.0"
+license = "Apache-2.0"
 edition = "2021"
 
 [dependencies]
 anyhow.workspace = true
 dashmap.workspace = true
 kumo-prometheus = {path="../kumo-prometheus"}
-kumo-server-memory = {path="../kumo-server-memory"}
 linkme.workspace = true
 parking_lot = {workspace=true}
 pastey.workspace = true
