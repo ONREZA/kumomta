@@ -1,6 +1,6 @@
 #![cfg(test)]
 
-use crate::{verify_email_with_resolver, DkimPrivateKey, ParsedEmail, SignerBuilder};
+use crate::{DkimPrivateKey, ParsedEmail, SignerBuilder, verify_email_with_resolver};
 use chrono::TimeZone;
 use dns_resolver::{Resolver, TestResolver};
 use mailparsing::AuthenticationResult;

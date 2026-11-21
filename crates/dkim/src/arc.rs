@@ -1,5 +1,5 @@
 use crate::header::{ARCMessageSignatureHeader, ARCSealHeader};
-use crate::{verify_email_header, DKIMError, ParsedEmail, Signer};
+use crate::{DKIMError, ParsedEmail, Signer, verify_email_header};
 use dns_resolver::Resolver;
 use mailparsing::{ARCAuthenticationResults, AuthenticationResult, AuthenticationResults, Header};
 use std::collections::BTreeMap;
@@ -474,8 +474,8 @@ impl ARCSet {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::roundtrip_test::{load_rsa_key, TEST_ZONE};
     use crate::SignerBuilder;
+    use crate::roundtrip_test::{TEST_ZONE, load_rsa_key};
     use chrono::{DateTime, TimeZone, Utc};
     use dns_resolver::TestResolver;
 

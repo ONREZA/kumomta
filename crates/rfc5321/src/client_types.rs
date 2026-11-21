@@ -2,70 +2,42 @@ use crate::parser::{Command, CommandVerb, MaybePartialCommand};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
+#[cfg_attr(
+    feature = "timeout-serde",
+    derive(Serialize, Deserialize),
+    serde(default)
+)]
 pub struct SmtpClientTimeouts {
-    #[serde(
-        default = "SmtpClientTimeouts::default_connect_timeout",
-        with = "duration_serde"
-    )]
+    #[cfg_attr(feature = "timeout-serde", serde(with = "duration_serde"))]
     pub connect_timeout: Duration,
 
-    #[serde(
-        default = "SmtpClientTimeouts::default_banner_timeout",
-        with = "duration_serde"
-    )]
+    #[cfg_attr(feature = "timeout-serde", serde(with = "duration_serde"))]
     pub banner_timeout: Duration,
 
-    #[serde(
-        default = "SmtpClientTimeouts::default_ehlo_timeout",
-        with = "duration_serde"
-    )]
+    #[cfg_attr(feature = "timeout-serde", serde(with = "duration_serde"))]
     pub ehlo_timeout: Duration,
 
-    #[serde(
-        default = "SmtpClientTimeouts::default_mail_from_timeout",
-        with = "duration_serde"
-    )]
+    #[cfg_attr(feature = "timeout-serde", serde(with = "duration_serde"))]
     pub mail_from_timeout: Duration,
 
-    #[serde(
-        default = "SmtpClientTimeouts::default_rcpt_to_timeout",
-        with = "duration_serde"
-    )]
+    #[cfg_attr(feature = "timeout-serde", serde(with = "duration_serde"))]
     pub rcpt_to_timeout: Duration,
 
-    #[serde(
-        default = "SmtpClientTimeouts::default_data_timeout",
-        with = "duration_serde"
-    )]
+    #[cfg_attr(feature = "timeout-serde", serde(with = "duration_serde"))]
     pub data_timeout: Duration,
-    #[serde(
-        default = "SmtpClientTimeouts::default_data_dot_timeout",
-        with = "duration_serde"
-    )]
+    #[cfg_attr(feature = "timeout-serde", serde(with = "duration_serde"))]
     pub data_dot_timeout: Duration,
-    #[serde(
-        default = "SmtpClientTimeouts::default_rset_timeout",
-        with = "duration_serde"
-    )]
+    #[cfg_attr(feature = "timeout-serde", serde(with = "duration_serde"))]
     pub rset_timeout: Duration,
 
-    #[serde(
-        default = "SmtpClientTimeouts::default_idle_timeout",
-        with = "duration_serde"
-    )]
+    #[cfg_attr(feature = "timeout-serde", serde(with = "duration_serde"))]
     pub idle_timeout: Duration,
 
-    #[serde(
-        default = "SmtpClientTimeouts::default_starttls_timeout",
-        with = "duration_serde"
-    )]
+    #[cfg_attr(feature = "timeout-serde", serde(with = "duration_serde"))]
     pub starttls_timeout: Duration,
 
-    #[serde(
-        default = "SmtpClientTimeouts::default_auth_timeout",
-        with = "duration_serde"
-    )]
+    #[cfg_attr(feature = "timeout-serde", serde(with = "duration_serde"))]
     pub auth_timeout: Duration,
 }
 
@@ -479,6 +451,25 @@ mod test {
         assert_eq!(parse_enhanced_status_code("2.0.0.1 w00t"), None);
 
         assert_eq!(parse_enhanced_status_code("2.0.0.1w00t"), None);
+    }
+
+    #[cfg(feature = "timeout-serde")]
+    #[test]
+    fn timeout_config_preserves_defaults_and_duration_forms() {
+        let defaults: SmtpClientTimeouts = serde_json::from_str("{}").unwrap();
+        assert_eq!(
+            serde_json::to_value(defaults).unwrap(),
+            serde_json::to_value(SmtpClientTimeouts::default()).unwrap(),
+        );
+        let config: SmtpClientTimeouts = serde_json::from_str(
+            r#"{"connect_timeout":"15s","banner_timeout":4,"ehlo_timeout":2.5}"#,
+        )
+        .unwrap();
+
+        assert_eq!(config.connect_timeout, Duration::from_secs(15));
+        assert_eq!(config.banner_timeout, Duration::from_secs(4));
+        assert_eq!(config.ehlo_timeout, Duration::from_millis(2500));
+        assert_eq!(config.mail_from_timeout, defaults.mail_from_timeout);
     }
 
     #[test]

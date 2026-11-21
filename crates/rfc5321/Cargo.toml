@@ -1,10 +1,12 @@
 [package]
 name = "rfc5321"
 version = "0.1.0"
+license = "Apache-2.0"
 edition = "2021"
 
 [features]
-default = ["client"]
+default = ["client", "timeout-serde"]
+timeout-serde = ["dep:duration-serde"]
 client = [
   "dep:hickory-proto",
   "dep:kumo-tls-helper",
@@ -22,7 +24,7 @@ lua = ["dep:mlua", "mlua/vendored", "mlua/macros", "mlua/lua54", "mlua/async", "
 anyhow = {workspace=true}
 bstr.workspace = true
 data-encoding = {workspace=true}
-duration-serde = {path="../duration-serde"}
+duration-serde = {path="../duration-serde", optional=true}
 hickory-proto = {workspace=true, optional=true}
 idna.workspace = true
 kumo-tls-helper = {path="../kumo-tls-helper", optional=true}
@@ -35,7 +37,6 @@ nom-utils = {path="../nom-utils"}
 openssl = {workspace=true, optional=true}
 pastey.workspace = true
 rustls = {workspace=true}
-rustls-pemfile = { workspace = true }
 rustls-platform-verifier = {workspace=true,optional=true}
 mlua = {workspace=true, optional=true}
 serde = {workspace=true}

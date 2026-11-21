@@ -1,7 +1,6 @@
 use crate::metrics::*;
 use dashmap::DashMap;
 use kumo_prometheus::prometheus::{Histogram, IntCounter, IntGauge};
-use kumo_server_memory::subscribe_to_memory_status_changes_async;
 pub use linkme;
 use parking_lot::Mutex;
 pub use pastey as paste;
@@ -457,23 +456,7 @@ pub fn set_cache_capacity(name: &str, capacity: usize) -> bool {
 
 pub fn spawn_memory_monitor() {
     vivify();
-    tokio::spawn(purge_caches_on_memory_shortage());
     tokio::spawn(prune_expired_caches());
-}
-
-async fn purge_caches_on_memory_shortage() {
-    tracing::debug!("starting memory monitor");
-    let mut memory_status = subscribe_to_memory_status_changes_async().await;
-    while let Ok(()) = memory_status.changed().await {
-        if kumo_server_memory::get_headroom() == 0 {
-            purge_all_caches();
-
-            // Wait a little bit so that we can debounce
-            // in the case where we're riding the cusp of
-            // the limit and would thrash the caches
-            tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -1117,9 +1100,14 @@ impl<
             // shorter.
             self.set_pending_expiration(name, Instant::now() + populate_timeout);
 
-            // Explicitly move processing to the `main` runtime to avoid
-            // performance-impacting contention with the calling runtime.
-            kumo_server_runtime::spawn_on_main("lruttl-populate", async move {
+            let runtime = tokio::runtime::Handle::try_current().map_err(|err| {
+                sema.close();
+                Arc::new(anyhow::anyhow!(
+                    "{} failed to spawn detached populate for {name:?}: {err:#}",
+                    self.inner.name
+                ))
+            })?;
+            runtime.spawn(async move {
                 // defer! closes the semaphore on every exit path, including a
                 // panic in the populate, waking any caller blocked on it.
                 defer! {
@@ -1180,17 +1168,7 @@ impl<
                     }
                 }
                 this.inner.maybe_evict();
-            })
-            .map_err(|err| {
-                // The lruttl-populate task above never ran. Its defer! block,
-                // which would otherwise close this semaphore, never ran
-                // either.
-                sema.close();
-                Arc::new(anyhow::anyhow!(
-                    "{} failed to spawn detached populate for {name:?}: {err:#}",
-                    self.inner.name
-                ))
-            })?;
+            });
         }
 
         match self.acquire(name, deadline, timeout_duration).await {

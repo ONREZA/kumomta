@@ -3314,6 +3314,15 @@ Some(
     }
 
     #[test]
+    fn encoded_subject_accepts_cp932_alias() {
+        let msg = MimePart::parse("Subject: =?cp932?Q?=83e=83X=83g?=\r\n\r\n").unwrap();
+        assert_eq!(
+            msg.headers().subject().unwrap().unwrap().as_slice(),
+            "テスト".as_bytes()
+        );
+    }
+
+    #[test]
     fn unstructured_raw_shift_jis() {
         // Raw Shift-JIS bytes in a Subject header (not wrapped in an
         // RFC 2047 encoded-word). "テスト" in Shift-JIS is:
@@ -3422,7 +3431,10 @@ Err(
         k9::assert_equal!(cd.get("filename").unwrap(), "日本語の添付");
 
         let encoded = cd.encode_value();
-        k9::assert_equal!(encoded, "attachment;\r\n\tfilename==?UTF-8?q?=E6=97=A5=E6=9C=AC=E8=AA=9E=E3=81=AE=E6=B7=BB=E4=BB=98?=");
+        k9::assert_equal!(
+            encoded,
+            "attachment;\r\n\tfilename==?UTF-8?q?=E6=97=A5=E6=9C=AC=E8=AA=9E=E3=81=AE=E6=B7=BB=E4=BB=98?="
+        );
     }
 
     #[test]
@@ -3438,7 +3450,10 @@ Err(
         let cd = msg.headers().content_disposition().unwrap().unwrap();
         k9::assert_equal!(cd.get("filename").unwrap(), "日本語の添付");
         let encoded = cd.encode_value();
-        k9::assert_equal!(encoded, "attachment;\r\n\tfilename=\"=?UTF-8?q?=E6=97=A5=E6=9C=AC=E8=AA=9E=E3=81=AE=E6=B7=BB=E4=BB=98?=\"");
+        k9::assert_equal!(
+            encoded,
+            "attachment;\r\n\tfilename=\"=?UTF-8?q?=E6=97=A5=E6=9C=AC=E8=AA=9E=E3=81=AE=E6=B7=BB=E4=BB=98?=\""
+        );
 
         let ct = msg.headers().content_type().unwrap().unwrap();
         k9::assert_equal!(ct.get("name").unwrap(), "日本語の添付");
@@ -4204,7 +4219,7 @@ Ok(
 
         let ar = Header::with_name_value(
             "Authentication-Results",
-            "example.com;\n\tauth=pass (cram-md5) smtp.auth=sender@example.com;\n\tspf=fail smtp.mailfrom=example.com"
+            "example.com;\n\tauth=pass (cram-md5) smtp.auth=sender@example.com;\n\tspf=fail smtp.mailfrom=example.com",
         );
         let ar = ar.as_authentication_results().unwrap();
         k9::snapshot!(

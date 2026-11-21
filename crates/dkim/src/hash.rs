@@ -1,4 +1,4 @@
-use crate::{canonicalization, DKIMError, ParsedEmail, TaggedHeader};
+use crate::{DKIMError, ParsedEmail, TaggedHeader, canonicalization};
 use data_encoding::BASE64;
 use mailparsing::Header;
 use sha1::{Digest as _, Sha1};
@@ -247,7 +247,7 @@ pub(crate) fn compute_headers_hash(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{DKIMHeader, DKIM_SIGNATURE_HEADER_NAME};
+    use crate::{DKIM_SIGNATURE_HEADER_NAME, DKIMHeader};
 
     fn dkim_header() -> DKIMHeader {
         DKIMHeader::parse("v=1; a=rsa-sha256; q=dns/txt; c=relaxed/relaxed; s=smtp; d=test.com; t=1641506955; h=content-type:to: subject:date:from:mime-version:sender; bh=PU2XIErWsXvhvt1W96ntPWZ2VImjVZ3vBY2T/A+wA3A=; b=PIO0A014nyntOGKdTdtvCJor9ZxvP1M3hoLeEh8HqZ+RvAyEKdAc7VOg+/g/OTaZgsmw6U sZCoN0YNVp+2o9nkaeUslsVz3M4I55HcZnarxl+fhplIMcJ/3s0nIhXL51MfGPRqPbB7/M Gjg9/07/2vFoid6Kitg6Z+CfoD2wlSRa8xDfmeyA2cHpeVuGQhGxu7BXuU8kGbeM4+weit Ql3t9zalhikEPI5Pr7dzYFrgWNOEO6w6rQfG7niKON1BimjdbJlGanC7cO4UL361hhXT4X iXLnC9TG39xKFPT/+4nkHy8pp6YvWkD3wKlBjwkYNm0JvKGwTskCMDeTwxXhAg==").unwrap()

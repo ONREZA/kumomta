@@ -1,9 +1,9 @@
 use bstr::{BStr, ByteSlice};
 use hickory_proto::rr::Name;
 use nom::branch::alt;
-use nom::bytes::complete::{take_while1, take_while_m_n};
+use nom::bytes::complete::{take_while_m_n, take_while1};
 use nom::combinator::{map_res, opt, recognize};
-use nom::error::{context, ContextError, ErrorKind, FromExternalError, ParseError as _};
+use nom::error::{ContextError, ErrorKind, FromExternalError, ParseError as _, context};
 use nom::multi::{many0, many1};
 use nom::sequence::pair;
 use nom::{Input, Parser as _};

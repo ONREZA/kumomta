@@ -93,10 +93,10 @@ impl FromStr for SocketAddress {
                     if let Ok(port) = port.parse::<u16>() {
                         match HostAddress::from_str(host) {
                             Ok(HostAddress::V4(a)) => {
-                                return Ok(SocketAddress::V4(SocketAddrV4::new(a, port)))
+                                return Ok(SocketAddress::V4(SocketAddrV4::new(a, port)));
                             }
                             Ok(HostAddress::V6(a)) => {
-                                return Ok(SocketAddress::V6(SocketAddrV6::new(a, port, 0, 0)))
+                                return Ok(SocketAddress::V6(SocketAddrV6::new(a, port, 0, 0)));
                             }
 
                             _ => {}

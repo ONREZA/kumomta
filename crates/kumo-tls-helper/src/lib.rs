@@ -3,6 +3,8 @@
 //! This crate provides TLS connector building and async stream traits
 //! that are shared across the KumoMTA crates.
 
+#[cfg(test)]
+mod pem_tests;
 mod traits;
 
 pub use traits::*;
@@ -12,9 +14,9 @@ use hickory_proto::rr::rdata::TLSA;
 use openssl::pkey::PKey;
 use openssl::ssl::{DaneMatchType, DaneSelector, DaneUsage, SslOptions};
 use openssl::x509::X509;
-use rustls::pki_types::{CertificateDer, PrivateKeyDer};
-use rustls_pemfile::certs;
-use std::io::BufReader;
+use rustls::pki_types::pem::PemObject;
+use rustls::pki_types::{pem, CertificateDer, PrivateKeyDer};
+use std::io;
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::time::{Duration, Instant};
@@ -22,6 +24,13 @@ use tokio_rustls::rustls::client::danger::ServerCertVerifier;
 use tokio_rustls::rustls::crypto::{aws_lc_rs as provider, CryptoProvider};
 use tokio_rustls::rustls::{ClientConfig, SupportedCipherSuite};
 use tokio_rustls::TlsConnector;
+
+fn pem_io_error(error: pem::Error) -> io::Error {
+    match error {
+        pem::Error::Io(error) => error,
+        error => io::Error::new(io::ErrorKind::InvalidData, error),
+    }
+}
 
 /// Errors that can occur when building an OpenSSL connector.
 #[derive(Error, Debug, Clone)]
@@ -180,68 +189,41 @@ impl TlsOptions {
         Ok(TlsConnector::from(config))
     }
 
-    async fn load_tls_cert(&self) -> std::io::Result<Option<Arc<Vec<CertificateDer<'static>>>>> {
-        match &self.certificate_from_pem {
-            Some(pem) => {
-                let data = pem.as_ref().clone().into_vec();
-                let mut reader = BufReader::new(data.as_slice());
-                let certs = certs(&mut reader)
-                    .map(|r| r.map(CertificateDer::into_owned))
-                    .collect::<Result<Vec<CertificateDer<'static>>, std::io::Error>>()?;
-                Ok(Some(Arc::new(certs)))
-            }
-            None => return Ok(None),
-        }
+    async fn load_tls_cert(&self) -> io::Result<Option<Arc<Vec<CertificateDer<'static>>>>> {
+        let Some(data) = &self.certificate_from_pem else {
+            return Ok(None);
+        };
+        let certs = CertificateDer::pem_reader_iter(&data[..])
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(pem_io_error)?;
+        Ok(Some(Arc::new(certs)))
     }
 
-    async fn load_private_key(&self) -> std::io::Result<Option<Arc<PrivateKeyDer<'static>>>> {
-        match &self.private_key_from_pem {
-            Some(pem) => {
-                let data = pem.as_ref().clone().into_vec();
+    async fn load_private_key(&self) -> io::Result<Option<Arc<PrivateKeyDer<'static>>>> {
+        let Some(data) = &self.private_key_from_pem else {
+            return Ok(None);
+        };
 
-                // Try to parse as PKCS#8
-                let pkcs8_keys: Vec<PrivateKeyDer<'static>> = {
-                    let mut reader = BufReader::new(data.as_slice());
-                    rustls_pemfile::pkcs8_private_keys(&mut reader)
-                        .map(|r| r.map(PrivateKeyDer::Pkcs8))
-                        .collect::<Result<Vec<PrivateKeyDer<'static>>, std::io::Error>>()?
-                };
-
-                if !pkcs8_keys.is_empty() {
-                    return Ok(pkcs8_keys.into_iter().next().map(Arc::new));
-                }
-
-                // Reset reader and try as RSA PKCS#1
-                let rsa_keys: Vec<PrivateKeyDer<'static>> = {
-                    let mut reader = BufReader::new(data.as_slice());
-                    rustls_pemfile::rsa_private_keys(&mut reader)
-                        .map(|r| r.map(PrivateKeyDer::Pkcs1))
-                        .collect::<Result<Vec<PrivateKeyDer<'static>>, std::io::Error>>()?
-                };
-
-                if !rsa_keys.is_empty() {
-                    return Ok(rsa_keys.into_iter().next().map(Arc::new));
-                }
-
-                // Reset reader and try as EC Sec1
-                let ec_keys: Vec<PrivateKeyDer<'static>> = {
-                    let mut reader = BufReader::new(data.as_slice());
-                    rustls_pemfile::ec_private_keys(&mut reader)
-                        .map(|r| r.map(PrivateKeyDer::Sec1))
-                        .collect::<Result<Vec<PrivateKeyDer<'static>>, std::io::Error>>()?
-                };
-
-                if !ec_keys.is_empty() {
-                    return Ok(ec_keys.into_iter().next().map(Arc::new));
-                }
-
-                Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    "No private key found in PEM file",
-                ))
-            }
-            None => return Ok(None),
+        // Keep the existing PKCS#8, PKCS#1, SEC1 preference while parsing the whole file once.
+        let mut keys = [None, None, None];
+        for key in PrivateKeyDer::pem_reader_iter(&data[..]) {
+            let key = key.map_err(pem_io_error)?;
+            let index = match &key {
+                PrivateKeyDer::Pkcs8(_) => 0,
+                PrivateKeyDer::Pkcs1(_) => 1,
+                PrivateKeyDer::Sec1(_) => 2,
+                _ => continue,
+            };
+            keys[index].get_or_insert(key);
         }
+
+        let key = keys.into_iter().flatten().next().ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "No private key found in PEM file",
+            )
+        })?;
+        Ok(Some(Arc::new(key)))
     }
 
     /// Build an OpenSSL connector configuration for use with DANE TLSA or
