@@ -1209,7 +1209,7 @@ checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 [[package]]
 name = "hickory-net"
 version = "0.26.3"
-source = "git+https://github.com/ONREZA/hickory-dns.git?rev=42c83939872c9841e5a09f744a73f6899f1f8324#42c83939872c9841e5a09f744a73f6899f1f8324"
+source = "git+https://github.com/ONREZA/hickory-dns.git?rev=b10b7d71e5fe08882dc82cf57e268463e5df8400#b10b7d71e5fe08882dc82cf57e268463e5df8400"
 dependencies = [
  "async-trait",
  "aws-lc-rs",
@@ -1238,7 +1238,7 @@ dependencies = [
 [[package]]
 name = "hickory-proto"
 version = "0.26.3"
-source = "git+https://github.com/ONREZA/hickory-dns.git?rev=42c83939872c9841e5a09f744a73f6899f1f8324#42c83939872c9841e5a09f744a73f6899f1f8324"
+source = "git+https://github.com/ONREZA/hickory-dns.git?rev=b10b7d71e5fe08882dc82cf57e268463e5df8400#b10b7d71e5fe08882dc82cf57e268463e5df8400"
 dependencies = [
  "aws-lc-rs",
  "bitflags 2.13.1",
@@ -1261,7 +1261,7 @@ dependencies = [
 [[package]]
 name = "hickory-resolver"
 version = "0.26.3"
-source = "git+https://github.com/ONREZA/hickory-dns.git?rev=42c83939872c9841e5a09f744a73f6899f1f8324#42c83939872c9841e5a09f744a73f6899f1f8324"
+source = "git+https://github.com/ONREZA/hickory-dns.git?rev=b10b7d71e5fe08882dc82cf57e268463e5df8400#b10b7d71e5fe08882dc82cf57e268463e5df8400"
 dependencies = [
  "cfg-if",
  "futures-util",

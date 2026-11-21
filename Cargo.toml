@@ -61,8 +61,8 @@ tracing = "0.1"
 uuid = "1.23.1"
 
 [patch.crates-io]
-hickory-net = { git = "https://github.com/ONREZA/hickory-dns.git", rev = "42c83939872c9841e5a09f744a73f6899f1f8324" }
-hickory-resolver = { git = "https://github.com/ONREZA/hickory-dns.git", rev = "42c83939872c9841e5a09f744a73f6899f1f8324" }
-hickory-proto = { git = "https://github.com/ONREZA/hickory-dns.git", rev = "42c83939872c9841e5a09f744a73f6899f1f8324" }
+hickory-net = { git = "https://github.com/ONREZA/hickory-dns.git", rev = "b10b7d71e5fe08882dc82cf57e268463e5df8400" }
+hickory-resolver = { git = "https://github.com/ONREZA/hickory-dns.git", rev = "b10b7d71e5fe08882dc82cf57e268463e5df8400" }
+hickory-proto = { git = "https://github.com/ONREZA/hickory-dns.git", rev = "b10b7d71e5fe08882dc82cf57e268463e5df8400" }
 openssl = { git = "https://github.com/ONREZA/rust-openssl.git", rev = "bb3a4dde9f40e74c58f0800abd155518719707ac" }
 openssl-sys = { git = "https://github.com/ONREZA/rust-openssl.git", rev = "bb3a4dde9f40e74c58f0800abd155518719707ac" }
